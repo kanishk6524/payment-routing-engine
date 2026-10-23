@@ -1,0 +1,230 @@
+{
+  "model": "xgboost-202610240123",
+  "lambda_cost": 0.01,
+  "lambda_latency": 0.05,
+  "tolerance_pp": 0.1,
+  "test_transactions": 60000,
+  "policies": {
+    "random": {
+      "all": {
+        "transactions": 60000.0,
+        "success_rate": 0.9170552319719538,
+        "value_success_rate": 0.905307857078082,
+        "effective_fee_pct": 1.8430225953314787,
+        "avg_latency_ms": 623.4930433446316
+      },
+      "incident": {
+        "transactions": 3131.000000000001,
+        "success_rate": 0.7551825428124959,
+        "value_success_rate": 0.7446616696670193,
+        "effective_fee_pct": 1.7844489640879935,
+        "avg_latency_ms": 1265.8842700814178
+      },
+      "normal": {
+        "transactions": 56869.0,
+        "success_rate": 0.9259673526309818,
+        "value_success_rate": 0.9149208682375498,
+        "effective_fee_pct": 1.845875364541854,
+        "avg_latency_ms": 588.1253222503117
+      },
+      "ips_success": 0.9184333333333333,
+      "ips_se": null,
+      "mix": {
+        "gw_a": 0.20745166666666667,
+        "gw_b": 0.20745166666666667,
+        "gw_c": 0.20745166666666667,
+        "gw_d": 0.20745166666666667,
+        "gw_e": 0.17019333333333334
+      }
+    },
+    "cheapest": {
+      "all": {
+        "transactions": 60000.0,
+        "success_rate": 0.887394663358159,
+        "value_success_rate": 0.8800469429298318,
+        "effective_fee_pct": 1.2580181458291437,
+        "avg_latency_ms": 881.1815316257787
+      },
+      "incident": {
+        "transactions": 3131.0,
+        "success_rate": 0.8402032656398085,
+        "value_success_rate": 0.8323794111909051,
+        "effective_fee_pct": 1.2362107324980542,
+        "avg_latency_ms": 1072.5893316143793
+      },
+      "normal": {
+        "transactions": 56869.0,
+        "success_rate": 0.8899928498262903,
+        "value_success_rate": 0.8828993512062764,
+        "effective_fee_pct": 1.2592484239777129,
+        "avg_latency_ms": 870.6433153433699
+      },
+      "ips_success": 0.8934544116663322,
+      "ips_se": 0.002776343720148753,
+      "mix": {
+        "gw_e": 0.8509666666666666,
+        "gw_b": 0.14903333333333332
+      }
+    },
+    "best_overall": {
+      "all": {
+        "transactions": 60000.0,
+        "success_rate": 0.9303191222638842,
+        "value_success_rate": 0.9225382678858197,
+        "effective_fee_pct": 2.40000019248234,
+        "avg_latency_ms": 434.6213577096133
+      },
+      "incident": {
+        "transactions": 3131.0,
+        "success_rate": 0.43269369500535265,
+        "value_success_rate": 0.43880321730809896,
+        "effective_fee_pct": 2.3999973574372078,
+        "avg_latency_ms": 2418.2549015387253
+      },
+      "normal": {
+        "transactions": 56869.0,
+        "success_rate": 0.9577165657347816,
+        "value_success_rate": 0.9514848025927438,
+        "effective_fee_pct": 2.400000270720198,
+        "avg_latency_ms": 325.40971998556427
+      },
+      "ips_success": 0.9336245541703478,
+      "ips_se": 0.0022205281181911446,
+      "mix": {
+        "gw_d": 1.0
+      }
+    },
+    "best_per_method": {
+      "all": {
+        "transactions": 60000.0,
+        "success_rate": 0.9351509718721839,
+        "value_success_rate": 0.9252530567693116,
+        "effective_fee_pct": 2.3201250515222265,
+        "avg_latency_ms": 458.45915595421707
+      },
+      "incident": {
+        "transactions": 3131.0,
+        "success_rate": 0.5113941027019284,
+        "value_success_rate": 0.49862918185359373,
+        "effective_fee_pct": 2.265710195341295,
+        "avg_latency_ms": 2148.390656581819
+      },
+      "normal": {
+        "transactions": 56869.0,
+        "success_rate": 0.9584814815940372,
+        "value_success_rate": 0.9507820788802828,
+        "effective_fee_pct": 2.3218327186310286,
+        "avg_latency_ms": 365.41768294669066
+      },
+      "ips_success": 0.9375875207607386,
+      "ips_se": 0.0021630029682920475,
+      "mix": {
+        "gw_d": 0.8509666666666666,
+        "gw_c": 0.14903333333333332
+      }
+    },
+    "ml": {
+      "all": {
+        "transactions": 60000.0,
+        "success_rate": 0.9697027705607014,
+        "value_success_rate": 0.9625188590597207,
+        "effective_fee_pct": 2.2750390469875565,
+        "avg_latency_ms": 353.9214872523816
+      },
+      "incident": {
+        "transactions": 3131.0,
+        "success_rate": 0.9558377058035074,
+        "value_success_rate": 0.9482877593364858,
+        "effective_fee_pct": 2.0972307952705216,
+        "avg_latency_ms": 452.9144844912684
+      },
+      "normal": {
+        "transactions": 56869.0,
+        "success_rate": 0.9704661305240341,
+        "value_success_rate": 0.963370443044723,
+        "effective_fee_pct": 2.285512448720412,
+        "avg_latency_ms": 348.47129339711853
+      },
+      "ips_success": 0.9704679467174745,
+      "ips_se": 0.0015145108884766076,
+      "mix": {
+        "gw_d": 0.7477,
+        "gw_a": 0.18456666666666666,
+        "gw_b": 0.04716666666666667,
+        "gw_c": 0.0205,
+        "gw_e": 6.666666666666667e-05
+      }
+    },
+    "ml_cost_aware": {
+      "all": {
+        "transactions": 60000.0,
+        "success_rate": 0.968183206224807,
+        "value_success_rate": 0.9612191559689468,
+        "effective_fee_pct": 2.257794996761304,
+        "avg_latency_ms": 360.2034016349035
+      },
+      "incident": {
+        "transactions": 3131.0,
+        "success_rate": 0.9563411040297423,
+        "value_success_rate": 0.9487582940091261,
+        "effective_fee_pct": 2.0912548153908315,
+        "avg_latency_ms": 449.5576693037006
+      },
+      "normal": {
+        "transactions": 56869.0,
+        "success_rate": 0.9688351892379204,
+        "value_success_rate": 0.9619648095509382,
+        "effective_fee_pct": 2.26762388636691,
+        "avg_latency_ms": 355.283881121601
+      },
+      "ips_success": 0.9691717992399423,
+      "ips_se": 0.001544783586041124,
+      "mix": {
+        "gw_d": 0.7047,
+        "gw_a": 0.23176666666666668,
+        "gw_b": 0.054,
+        "gw_c": 0.0094,
+        "gw_e": 0.00013333333333333334
+      }
+    },
+    "oracle": {
+      "all": {
+        "transactions": 60000.0,
+        "success_rate": 0.9710667955936308,
+        "value_success_rate": 0.9641321819017463,
+        "effective_fee_pct": 2.262387213410837,
+        "avg_latency_ms": 355.02952279639374
+      },
+      "incident": {
+        "transactions": 3131.0,
+        "success_rate": 0.9617516316980356,
+        "value_success_rate": 0.9525429719436428,
+        "effective_fee_pct": 2.0812681095789256,
+        "avg_latency_ms": 441.1870424346028
+      },
+      "normal": {
+        "transactions": 56869.0,
+        "success_rate": 0.9715796545881112,
+        "value_success_rate": 0.9648256761355785,
+        "effective_fee_pct": 2.2730873422921487,
+        "avg_latency_ms": 350.28600358580036
+      },
+      "ips_success": 0.972421590797365,
+      "ips_se": 0.0014637812343414837,
+      "mix": {
+        "gw_d": 0.7556,
+        "gw_a": 0.12486666666666667,
+        "gw_b": 0.08763333333333333,
+        "gw_c": 0.0319
+      }
+    }
+  },
+  "headline": [
+    "vs cheapest: success 96.97% vs 88.74% (+8.23 pp); cost-aware router fee 2.258% vs 1.258% (+79.5%), success 96.82%",
+    "    during incidents: 95.6% vs 84.0%",
+    "vs best overall: success 96.97% vs 93.03% (+3.94 pp); cost-aware router fee 2.258% vs 2.400% (-5.9%), success 96.82%",
+    "    during incidents: 95.6% vs 43.3%",
+    "vs best per method: success 96.97% vs 93.52% (+3.46 pp); cost-aware router fee 2.258% vs 2.320% (-2.7%), success 96.82%",
+    "    during incidents: 95.6% vs 51.1%"
+  ]
+}

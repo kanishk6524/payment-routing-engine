@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+
+# Secrets and local config
+.env
+
+# Generated data and models
+data/*
+!data/.gitkeep
+ml/artifacts/
+*.parquet
+*.csv
+*.pkl
+*.joblib
+
+# Docker volumes
+.docker/
+pgdata/
+grafana-data/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
