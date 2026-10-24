@@ -28,7 +28,7 @@ def encode(df: pd.DataFrame, levels: dict) -> pd.DataFrame:
     """
     X = df[FEATURE_COLUMNS].copy()
     for col, cats in levels.items():
-        X[col] = pd.Categorical(X[col], categories=cats)
+        X[col] = pd.Categorical(X[col].where(X[col].isin(cats)), categories=cats)
     return X
 
 

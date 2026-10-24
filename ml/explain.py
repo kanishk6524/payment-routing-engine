@@ -30,10 +30,15 @@ def contributions(model, X: pd.DataFrame):
         return None
     import xgboost as xgb
 
-    raw = model.get_booster().predict(xgb.DMatrix(X, enable_categorical=True), pred_contribs=True)
+    # Predictions use only the trees up to the early-stopping point, so explain exactly those.
+    best = getattr(model, "best_iteration", None)
+    rng = (0, int(best) + 1) if best is not None else (0, 0)
+    raw = model.get_booster().predict(
+        xgb.DMatrix(X, enable_categorical=True), pred_contribs=True, iteration_range=rng)
     out = pd.DataFrame(raw[:, :-1], columns=list(X.columns), index=X.index)
     out.attrs["bias"] = raw[:, -1]  # contributions + bias = the model's raw log-odds
     return out
+
 
 
 def describe_value(feature: str, value) -> str:
