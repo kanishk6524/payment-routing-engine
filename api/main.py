@@ -13,6 +13,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from .health import utc_now
 from .service import NoGatewayAvailable, Router
 
 METHODS = ("upi", "card", "netbanking")
@@ -24,6 +25,7 @@ class RouteRequest(BaseModel):
     bank: Optional[str] = Field(default=None, examples=["HDFC"])
     merchant_category: Optional[str] = Field(default=None, examples=["retail"])
     txn_id: Optional[str] = None
+    exclude: list[str] = Field(default_factory=list, description="gateways already tried (failover retry)")
 
 
 class OutcomeRequest(BaseModel):
@@ -54,14 +56,17 @@ def health():
     r = _router()
     return {"status": "ok", "model_version": r.bundle["version"], "model_kind": r.bundle["kind"],
             "gateways": r.gateway_ids, "disabled": sorted(r.tracker.disabled),
-            "uptime_s": round(time.time() - app.state.started)}
+            "uptime_s": round(time.time() - app.state.started),
+            "breaker_cooldown_s": r.breakers.cfg.cooldown_s}
 
 
 @app.get("/gateways")
 def gateways():
     r = _router()
     recent = r.tracker.summary()
-    return [{"gateway_id": g, "enabled": g not in r.tracker.disabled, "last_15_min": recent.get(g)}
+    breaker = r.breakers.snapshot(utc_now())
+    return [{"gateway_id": g, "enabled": g not in r.tracker.disabled, "last_15_min": recent.get(g),
+             "breaker": breaker.get(g, {"state": "closed", "probe_successes": 0})["state"]}
             for g in r.gateway_ids]
 
 
@@ -70,7 +75,7 @@ def route(req: RouteRequest):
     if req.method not in METHODS:
         raise HTTPException(422, f"method must be one of {METHODS}")
     try:
-        return _router().route(req.model_dump())
+        return _router().route(req.model_dump(), exclude=req.exclude)
     except NoGatewayAvailable as exc:
         raise HTTPException(503, str(exc))
 
@@ -78,10 +83,10 @@ def route(req: RouteRequest):
 @app.post("/outcome", status_code=202)
 def outcome(req: OutcomeRequest):
     try:
-        _router().record_outcome(req.gateway_id, req.success, req.latency_ms, req.failure_code)
+        change = _router().record_outcome(req.gateway_id, req.success, req.latency_ms, req.failure_code)
     except KeyError:
         raise HTTPException(404, f"unknown gateway {req.gateway_id}")
-    return {"recorded": True}
+    return {"recorded": True, "breaker_change": change}
 
 
 @app.post("/gateways/{gateway_id}/disable")

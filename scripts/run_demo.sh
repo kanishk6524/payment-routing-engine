@@ -5,7 +5,7 @@ set -u
 cd "$(dirname "$0")/.."
 [ -f .venv/bin/activate ] && source .venv/bin/activate
 
-uvicorn api.main:app --port 8000 --log-level warning &
+BREAKER_COOLDOWN_S=${BREAKER_COOLDOWN_S:-15} uvicorn api.main:app --port 8000 --log-level warning &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null' EXIT
 

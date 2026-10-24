@@ -41,6 +41,14 @@ class HealthTracker:
             ev = pd.concat([self._events, row], ignore_index=True)
             self._events = ev[ev["ts"] >= ev["ts"].max() - pd.Timedelta(minutes=RETAIN_MINUTES)]
 
+    def forget(self, gateway_id: str, start, end) -> int:
+        """Drop one gateway's recorded outcomes between `start` and `end` (an incident that is over)."""
+        with self._lock:
+            ev = self._events
+            drop = (ev["gateway_id"] == gateway_id) & (ev["ts"] >= start) & (ev["ts"] <= end)
+            self._events = ev[~drop].reset_index(drop=True)
+            return int(drop.sum())
+
     def snapshot(self) -> pd.DataFrame:
         with self._lock:
             return self._events.copy()

@@ -49,7 +49,7 @@ payment-router/
 - [x] Stage 6: per-decision explanations (exact TreeSHAP via XGBoost; global SHAP plots still to do)
 - [x] Stage 7: FastAPI service (`/route`, `/outcome`, `/gateways`, `/health`)
 - [ ] Stage 8: Kafka event pipeline
-- [ ] Stage 9: failover and rerouting
+- [x] Stage 9: circuit breaker, probing, failover retries
 - [ ] Stage 10: dashboards
 - [ ] Stage 11: tests, load test, CI, documentation
 
@@ -201,6 +201,22 @@ curl -s localhost:8000/route -H 'content-type: application/json' \
 Decision flow: build the same 22 features used in training (the rolling gateway stats come from the live outcome record), predict P(success) per gateway with XGBoost, apply the tuned cost and latency weights, pick the highest score. Drivers are exact TreeSHAP values from XGBoost (`pred_contribs`), in log-odds.
 
 Current limits, by design for now: gateway health is held in memory (Redis comes with the Kafka pipeline in Stage 8), and automatic circuit breaking and failover arrive in Stage 9. On startup the bundled history is shifted to the present as a demo seed.
+
+### Circuit breaker and failover (Stage 9)
+
+Each gateway has a breaker (`api/breaker.py`):
+
+| State | Meaning |
+|---|---|
+| closed | Normal. Gateway-side failures (timeouts, gateway errors) in the last 120 s are counted. 20 or more attempts with at least half failing trips it. Bank declines never count. |
+| open | No traffic for the cooldown (30 s by default). |
+| half open | About 10% of low-value transactions (INR 2,000 or less) are sent as probes. Five successes in a row close the breaker. One failure reopens it. |
+
+When a breaker closes, the router forgets that incident's failures, so a verified recovery gets traffic back immediately instead of waiting up to an hour for the rolling windows to clear. If every gateway for a payment method is tripped, the router still uses the best one (`mode: fail_open`) rather than rejecting the payment.
+
+Failover for clients: if a gateway call fails, send the same request to `POST /route` again with `"exclude": ["gw_d"]` to get the next best gateway.
+
+Settings are environment variables, for example `BREAKER_COOLDOWN_S=15` or `BREAKER_PROBE_SHARE=0.2`. Run the whole story with `bash scripts/run_demo.sh`.
 
 ## Results
 
