@@ -48,7 +48,7 @@ payment-router/
 - [x] Stage 5: baselines and XGBoost model
 - [x] Stage 6: per-decision explanations (exact TreeSHAP via XGBoost; global SHAP plots still to do)
 - [x] Stage 7: FastAPI service (`/route`, `/outcome`, `/gateways`, `/health`)
-- [ ] Stage 8: Kafka event pipeline
+- [x] Stage 8: Kafka event pipeline and Redis health store
 - [x] Stage 9: circuit breaker, probing, failover retries
 - [ ] Stage 10: dashboards
 - [ ] Stage 11: tests, load test, CI, documentation
@@ -217,6 +217,22 @@ When a breaker closes, the router forgets that incident's failures, so a verifie
 Failover for clients: if a gateway call fails, send the same request to `POST /route` again with `"exclude": ["gw_d"]` to get the next best gateway.
 
 Settings are environment variables, for example `BREAKER_COOLDOWN_S=15` or `BREAKER_PROBE_SHARE=0.2`. Run the whole story with `bash scripts/run_demo.sh`.
+
+### Event pipeline (Stage 8)
+
+```
+ outcome stream ──► Kafka payment.outcomes ──► API consumer ──► Redis health + circuit breakers
+ POST /route ─────► Kafka payment.decisions ──► decision sink ──► PostgreSQL routing_decisions
+```
+
+- **Redis** holds the last 75 minutes of gateway outcomes (one sorted set per gateway) and the manual kill switch, so health survives an API restart and other processes can read it. Without Redis the API falls back to memory.
+- **Kafka** carries two topics. `payment.outcomes` brings attempt results from other services into the router. `payment.decisions` records every routing decision with its scores and explanation. Without Kafka the API runs normally and keeps messages in a local buffer.
+- **Decision sink** (`python -m pipeline.decision_sink`) stores each decision in `routing_decisions`, creating the matching `transactions` row. Replays are safe because duplicates are ignored.
+- **Stream replay** (`python -m pipeline.stream --incident gw_d`) publishes recorded outcomes around a real incident, so you can watch the breaker react.
+
+Run the whole thing: `docker compose up -d`, then `python scripts/pipeline_demo.py`.
+
+Environment: `ROUTER_HEALTH=auto|redis|memory`, `EVENT_BUS=auto|kafka|none`, `REDIS_PREFIX`, `KAFKA_BOOTSTRAP_SERVERS`.
 
 ## Results
 

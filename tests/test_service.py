@@ -126,6 +126,7 @@ def test_http_layer(parts, monkeypatch):
 
     import api.main as main
 
+    monkeypatch.setenv("EVENT_BUS", "none")
     monkeypatch.setattr(main.Router, "from_artifacts", classmethod(lambda cls, **kw: make_router(parts)))
     with TestClient(main.app) as client:
         assert client.get("/health").json()["status"] == "ok"

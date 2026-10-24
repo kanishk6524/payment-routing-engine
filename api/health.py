@@ -11,6 +11,16 @@ def utc_now() -> pd.Timestamp:
     return pd.Timestamp.now("UTC").tz_localize(None)
 
 
+def summarise(events: pd.DataFrame, now, minutes: int = 15) -> dict:
+    """Attempts, success rate and mean latency per gateway over the last `minutes`."""
+    ev = events[(events["ts"] >= now - pd.Timedelta(minutes=minutes)) & (events["ts"] <= now)]
+    out = {}
+    for gw, g in ev.groupby("gateway_id"):
+        out[gw] = {"attempts": int(len(g)), "success_rate": round(float(g["success"].astype(float).mean()), 4),
+                   "avg_latency_ms": round(float(g["latency_ms"].astype(float).mean()))}
+    return out
+
+
 class HealthTracker:
     """Holds the last ~75 minutes of attempt outcomes and a manual kill switch per gateway."""
 
@@ -51,15 +61,12 @@ class HealthTracker:
 
     def snapshot(self) -> pd.DataFrame:
         with self._lock:
-            return self._events.copy()
+            return self._events.sort_values("ts", kind="stable").reset_index(drop=True)
+
+    def is_empty(self) -> bool:
+        """True when nothing was recorded within the retention window."""
+        ev = self.snapshot()
+        return ev.empty or bool((ev["ts"] < utc_now() - pd.Timedelta(minutes=RETAIN_MINUTES)).all())
 
     def summary(self, now=None, minutes: int = 15) -> dict:
-        """Success rate and volume per gateway over the last `minutes`."""
-        now = now or utc_now()
-        ev = self.snapshot()
-        ev = ev[(ev["ts"] >= now - pd.Timedelta(minutes=minutes)) & (ev["ts"] <= now)]
-        out = {}
-        for gw, g in ev.groupby("gateway_id"):
-            out[gw] = {"attempts": int(len(g)), "success_rate": round(float(g["success"].astype(float).mean()), 4),
-                       "avg_latency_ms": round(float(g["latency_ms"].astype(float).mean()))}
-        return out
+        return summarise(self.snapshot(), now or utc_now(), minutes)

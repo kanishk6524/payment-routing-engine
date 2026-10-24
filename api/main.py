@@ -5,14 +5,21 @@
 
 Interactive docs: http://localhost:8000/docs
 """
+import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from pipeline.bus import ConsumerThread, make_bus
+
+from .events import (
+    DECISIONS_TOPIC, OUTCOMES_TOPIC, apply_outcome_event, decision_event, outcome_event,
+)
 from .health import utc_now
 from .service import NoGatewayAvailable, Router
 
@@ -35,13 +42,28 @@ class OutcomeRequest(BaseModel):
     failure_code: Optional[str] = Field(default=None, examples=["GATEWAY_ERROR"])
 
 
+log = logging.getLogger("router.api")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.router = Router.from_artifacts(
         source=os.getenv("ROUTER_SOURCE", "db"), data_dir=os.getenv("ROUTER_DATA", "data"),
         model_path=os.getenv("ROUTER_MODEL", "ml/artifacts/model.joblib"))
     app.state.started = time.time()
+    app.state.instance = uuid.uuid4().hex[:8]
+    app.state.bus = make_bus()
+    app.state.consumer = None
+    if app.state.bus.name == "kafka":  # outcomes reported by other services arrive here
+        app.state.consumer = ConsumerThread(
+            OUTCOMES_TOPIC, f"router-api-{app.state.instance}",
+            lambda ev: apply_outcome_event(app.state.router, ev, app.state.instance))
+        app.state.consumer.start()
+    log.info("health store: %s, event bus: %s", app.state.router.health_backend, app.state.bus.name)
     yield
+    if app.state.consumer:
+        app.state.consumer.stop()
+    app.state.bus.flush(3)
 
 
 app = FastAPI(title="Payment Routing Engine", version="0.1.0", lifespan=lifespan)
@@ -57,7 +79,8 @@ def health():
     return {"status": "ok", "model_version": r.bundle["version"], "model_kind": r.bundle["kind"],
             "gateways": r.gateway_ids, "disabled": sorted(r.tracker.disabled),
             "uptime_s": round(time.time() - app.state.started),
-            "breaker_cooldown_s": r.breakers.cfg.cooldown_s}
+            "breaker_cooldown_s": r.breakers.cfg.cooldown_s,
+            "health_store": r.health_backend, "event_bus": app.state.bus.name}
 
 
 @app.get("/gateways")
@@ -75,9 +98,12 @@ def route(req: RouteRequest):
     if req.method not in METHODS:
         raise HTTPException(422, f"method must be one of {METHODS}")
     try:
-        return _router().route(req.model_dump(), exclude=req.exclude)
+        txn = req.model_dump()
+        decision = _router().route(txn, exclude=req.exclude)
     except NoGatewayAvailable as exc:
         raise HTTPException(503, str(exc))
+    app.state.bus.publish(DECISIONS_TOPIC, decision["txn_id"], decision_event(decision, txn, req.exclude))
+    return decision
 
 
 @app.post("/outcome", status_code=202)
@@ -86,6 +112,8 @@ def outcome(req: OutcomeRequest):
         change = _router().record_outcome(req.gateway_id, req.success, req.latency_ms, req.failure_code)
     except KeyError:
         raise HTTPException(404, f"unknown gateway {req.gateway_id}")
+    app.state.bus.publish(OUTCOMES_TOPIC, req.gateway_id, outcome_event(
+        req.gateway_id, req.success, req.latency_ms, req.failure_code, origin=app.state.instance))
     return {"recorded": True, "breaker_change": change}
 
 

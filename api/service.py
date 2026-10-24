@@ -17,6 +17,7 @@ from ml.replay import TXN_COLUMNS, add_model_scores, build_candidates, ml_score
 
 from .breaker import CLOSED, HALF_OPEN, OPEN, BreakerConfig, CircuitBreakers
 from .health import HealthTracker, utc_now
+from .redis_health import make_tracker
 
 DEFAULT_LAMBDAS = (0.01, 0.05)
 
@@ -39,6 +40,7 @@ class Router:
                  lambdas: tuple = DEFAULT_LAMBDAS, breakers: CircuitBreakers = None):
         self.bundle, self.gateways, self.tracker = bundle, gateways, tracker
         self.lam_cost, self.lam_latency = lambdas
+        self.health_backend = "memory"
         self.breakers = breakers or CircuitBreakers(BreakerConfig.from_env())
 
     @classmethod
@@ -49,10 +51,12 @@ class Router:
             attempts, gateways, _ = load(source, data_dir)
         except Exception:  # database not reachable: fall back to the simulator CSVs
             attempts, gateways, _ = load("csv", data_dir)
-        tracker = HealthTracker()
-        if seed_demo:
+        tracker, backend = make_tracker(sorted(gateways["gateway_id"]))
+        if seed_demo and tracker.is_empty():
             tracker.seed(attempts)
-        return cls(bundle, gateways, tracker, read_lambdas())
+        router = cls(bundle, gateways, tracker, read_lambdas())
+        router.health_backend = backend
+        return router
 
     @property
     def gateway_ids(self) -> list:
