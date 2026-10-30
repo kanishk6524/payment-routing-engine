@@ -50,7 +50,7 @@ payment-router/
 - [x] Stage 7: FastAPI service (`/route`, `/outcome`, `/gateways`, `/health`)
 - [x] Stage 8: Kafka event pipeline and Redis health store
 - [x] Stage 9: circuit breaker, probing, failover retries
-- [ ] Stage 10: dashboards
+- [x] Stage 10: dashboard
 - [ ] Stage 11: tests, load test, CI, documentation
 
 MVP path: Stages 1, 2, 3, 5, 7.
@@ -217,6 +217,21 @@ When a breaker closes, the router forgets that incident's failures, so a verifie
 Failover for clients: if a gateway call fails, send the same request to `POST /route` again with `"exclude": ["gw_d"]` to get the next best gateway.
 
 Settings are environment variables, for example `BREAKER_COOLDOWN_S=15` or `BREAKER_PROBE_SHARE=0.2`. Run the whole story with `bash scripts/run_demo.sh`.
+
+### Dashboard (Stage 10)
+
+```bash
+docker compose up -d
+uvicorn api.main:app            # terminal 1
+python -m pipeline.stream --incident gw_d   # terminal 2 (live traffic)
+streamlit run dashboards/app.py # terminal 3
+```
+
+Four tabs: live gateway cards and time series (API + Redis), decision history with SHAP drill-down
+(PostgreSQL), a form that routes a payment through the live API, and the policy comparison from
+`reports/results.json`. Each panel says plainly if its source is down. Aggregation is in
+`dashboards/data.py` and unit-tested; `tests/test_dashboard_app.py` renders the app headlessly.
+All figures come from simulated data.
 
 ### Event pipeline (Stage 8)
 
