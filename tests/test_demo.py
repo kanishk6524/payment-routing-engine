@@ -99,3 +99,43 @@ def test_http_endpoints_and_admin_token(parts, monkeypatch):  # noqa: F811
         assert client.post("/outcome", json=out, headers={"X-Admin-Token": "s3cret"}).status_code == 202
         assert client.post("/gateways/gw_d/disable", headers={"X-Admin-Token": "s3cret"}).status_code == 200
         assert client.post("/route", json=TXN).status_code == 200  # routing stays public
+
+
+# ------------------------------------------------------------------ incident selection
+def make_data(outages):
+    rows = []
+    for i in range(10000):
+        rows.append({"ts": pd.Timestamp("2026-02-01") + pd.Timedelta(minutes=i), "gateway_id": ["gw_a", "gw_d"][i % 2],
+                     "success": True, "latency_ms": 200, "failure_code": None, "amount_inr": 500.0,
+                     "method": "card", "bank": "HDFC", "merchant_category": "retail"})
+    out = pd.DataFrame(outages, columns=["gateway_id", "start", "end"])
+    for c in ("start", "end"):
+        out[c] = pd.to_datetime(out[c])
+    return pd.DataFrame(rows), pd.DataFrame(), out
+
+
+def feed_rows(monkeypatch, outages, incident="gw_d"):
+    import api.demo as demo
+
+    monkeypatch.setattr(demo, "load", lambda src, d: make_data(outages))
+    return DemoFeed(None, lambda *a: None, incident=incident)._rows()
+
+
+def test_uses_the_configured_gateways_recorded_incident(monkeypatch):
+    out = [("gw_d", "2026-02-06 20:00", "2026-02-06 21:00"), ("gw_a", "2026-02-07 08:00", "2026-02-07 09:00")]
+    rows = feed_rows(monkeypatch, out)
+    assert rows["ts"].min() == pd.Timestamp("2026-02-06 18:00") and rows["ts"].max() <= pd.Timestamp("2026-02-06 22:00")
+
+
+def test_falls_back_to_another_gateways_incident(monkeypatch):
+    out = [("gw_d", "2026-01-05 08:00", "2026-01-05 09:00"),   # before the replay period
+           ("gw_a", "2026-02-07 08:00", "2026-02-07 09:00")]
+    rows = feed_rows(monkeypatch, out)
+    assert rows["ts"].min() == pd.Timestamp("2026-02-07 06:00")
+
+
+def test_injects_a_synthetic_outage_when_the_data_has_no_incident(monkeypatch):
+    rows = feed_rows(monkeypatch, [("gw_d", "2026-01-05 08:00", "2026-01-05 09:00")])
+    bad = rows[~rows["success"]]
+    assert len(bad) > 100 and set(bad["gateway_id"]) == {"gw_d"} and set(bad["failure_code"]) == {"GATEWAY_ERROR"}
+    assert rows["success"].dtype == bool and rows[rows["gateway_id"] == "gw_a"]["success"].all()

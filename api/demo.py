@@ -34,12 +34,35 @@ class DemoFeed(threading.Thread):
         self._halt.set()
 
     def _rows(self):
+        """The recorded traffic to replay, always containing a gateway incident.
+
+        Order of preference: a recorded incident of the configured gateway, then a recorded
+        incident of any other gateway, then (when the data has none in its replay period) a
+        synthetic outage of the configured gateway injected into normal recorded traffic.
+        """
         attempts, _, outages = load("csv", self.data_dir)
-        stream = pick_start(attempts, outages, self.incident)
-        # keep the incident plus an hour of recovery, so the loop (and the breaker cycle) is short
-        end = outages[(outages["gateway_id"] == self.incident) & (outages["start"] >= stream["ts"].min())] \
-            .sort_values("start").iloc[0]["end"]
-        return stream[stream["ts"] <= end + pd.Timedelta(hours=1)].reset_index(drop=True)
+        order = [self.incident] + sorted(g for g in outages["gateway_id"].unique() if g != self.incident)
+        for gw in order:
+            try:
+                stream = pick_start(attempts, outages, gw)
+            except SystemExit:
+                continue
+            # keep the incident plus an hour of recovery, so the loop (and the breaker cycle) is short
+            end = outages[(outages["gateway_id"] == gw) & (outages["start"] >= stream["ts"].min())] \
+                .sort_values("start").iloc[0]["end"]
+            log.warning("demo feed: replaying the recorded %s incident", gw)
+            return stream[stream["ts"] <= end + pd.Timedelta(hours=1)].reset_index(drop=True)
+        log.warning("demo feed: no recorded incident in the replay period; injecting a synthetic %s outage",
+                    self.incident)
+        return self._synthetic(attempts)
+
+    def _synthetic(self, attempts: pd.DataFrame) -> pd.DataFrame:
+        stream = attempts[attempts["ts"] >= attempts["ts"].quantile(0.8)].sort_values("ts").head(1500)
+        stream = stream.reset_index(drop=True)
+        hit = (stream.index >= 400) & (stream.index < 1000) & (stream["gateway_id"] == self.incident)
+        stream.loc[hit, ["success", "latency_ms", "failure_code"]] = [False, 5000, "GATEWAY_ERROR"]
+        stream["success"] = stream["success"].astype(bool)
+        return stream
 
     def run(self) -> None:
         try:
