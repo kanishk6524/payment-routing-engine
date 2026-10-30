@@ -83,11 +83,10 @@ def live():
             if not card["enabled"]:
                 st.caption("Disabled by kill switch")
 
-    events, ev_err = data.load_events()
+    series, ev_err = data.load_series(window_min=60, bucket_s=60)
     if ev_err:
-        notice("Redis is not reachable, so the time series are unavailable.", ev_err)
+        notice("Time series are unavailable (neither the API nor Redis answered).", ev_err)
         return
-    series = data.bucket_series(events, window_min=60, bucket_s=60)
     if series.empty:
         st.info("No recent events yet. Start traffic with `python -m pipeline.stream --incident gw_d`.")
         return
@@ -104,7 +103,7 @@ def live():
         style(fig, title=title, hovermode="x unified", legend=dict(orientation="h"))
         if field == "success_pct":
             fig.update_yaxes(range=[0, 101])
-        col.plotly_chart(fig, use_container_width=True)
+        col.plotly_chart(fig, width="stretch")
 
 
 with tab_live:
@@ -127,7 +126,7 @@ with tab_dec:
                 fig.add_trace(go.Bar(x=s["bucket"], y=s["share_pct"], name=gw, marker_color=theme.GATEWAY_COLORS[gw]))
         style(fig, title="Where traffic was routed (share per minute)", barmode="stack", legend=dict(orientation="h"))
         fig.update_yaxes(range=[0, 100], ticksuffix="%")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         st.markdown("#### Why a payment went where it did")
         view = dec.head(100).copy()
@@ -141,7 +140,7 @@ with tab_dec:
         sc = data.scores_frame(row["scores"], row["chosen_gateway"])
         fig = go.Figure(go.Bar(x=sc["score"], y=sc["gateway"], orientation="h",
                                marker_color=[theme.ROSE if c else theme.CERULEAN for c in sc["chosen"]]))
-        a.plotly_chart(style(fig, 260, title="Score per gateway (chosen in rose)"), use_container_width=True)
+        a.plotly_chart(style(fig, 260, title="Score per gateway (chosen in rose)"), width="stretch")
         dr = data.drivers_frame(expl)
         if dr.empty:
             b.caption("No SHAP drivers were stored for this decision.")
@@ -149,10 +148,10 @@ with tab_dec:
             fig = go.Figure(go.Bar(x=dr["effect"], y=dr["label"] + ": " + dr["value"].astype(str), orientation="h",
                                    marker_color=[theme.CERULEAN if e > 0 else theme.ROSE for e in dr["effect"]]))
             b.plotly_chart(style(fig, 260, title="SHAP drivers (log-odds; cerulean raises, rose lowers)"),
-                           use_container_width=True)
+                           width="stretch")
         with st.expander("Recent decisions"):
             st.dataframe(view[["decided_at", "txn_id", "amount_inr", "method", "bank", "chosen_gateway", "policy"]],
-                         use_container_width=True, hide_index=True)
+                         width="stretch", hide_index=True)
 
 
 # ------------------------------------------------------------------ route
@@ -179,10 +178,10 @@ with tab_route:
             if res.get("tripped_gateways"):
                 st.warning(f"Circuit breaker open for: {', '.join(res['tripped_gateways'])}")
             alts = data.alternatives_frame(res["alternatives"], res["gateway"])
-            st.dataframe(alts, use_container_width=True, hide_index=True)
+            st.dataframe(alts, width="stretch", hide_index=True)
             dr = data.drivers_frame({"drivers": res["drivers"]})
             if not dr.empty:
-                st.dataframe(dr, use_container_width=True, hide_index=True)
+                st.dataframe(dr, width="stretch", hide_index=True)
 
 
 # ------------------------------------------------------------------ model
@@ -203,10 +202,10 @@ with tab_model:
                                    text=pf[field].map("{:.2f}".format), textposition="outside"))
             fig.update_yaxes(autorange="reversed")
             fig.update_xaxes(range=[max(0, pf[field].min() - 5), 100.5])
-            col.plotly_chart(style(fig, 340, title=title), use_container_width=True)
+            col.plotly_chart(style(fig, 340, title=title), width="stretch")
         st.dataframe(pf.drop(columns="key").rename(columns={
             "success_pct": "Success %", "incident_pct": "Incident success %", "fee_pct": "Effective fee %",
-            "latency_ms": "Latency ms"}), use_container_width=True, hide_index=True)
+            "latency_ms": "Latency ms"}), width="stretch", hide_index=True)
     metrics = data.load_metrics()
     if metrics:
         with st.expander("Training metrics"):

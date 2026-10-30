@@ -41,14 +41,27 @@ def api_post(path: str, body: dict = None):
 
 def load_events(gateway_ids=("gw_a", "gw_b", "gw_c", "gw_d", "gw_e")):
     """Recent attempt outcomes from Redis. Returns (DataFrame, error or None)."""
-    from api.redis_health import RedisHealthTracker, connect_redis
-
     try:
+        from api.redis_health import RedisHealthTracker, connect_redis
+
         tracker = RedisHealthTracker(connect_redis(), gateway_ids, os.getenv("REDIS_PREFIX", "router:"))
         return tracker.snapshot(), None
     except Exception as exc:
         return pd.DataFrame(columns=["gateway_id", "ts", "latency_ms", "success", "failure_code"]), \
             f"{type(exc).__name__}: {exc}"
+
+
+def load_series(window_min: int = 60, bucket_s: int = 60):
+    """Per-gateway time series. Asks the API (works for a hosted dashboard), else reads Redis directly."""
+    rows, err = api_get(f"/series?minutes={window_min}&bucket_s={bucket_s}")
+    if err is None:
+        df = pd.DataFrame(rows, columns=["gateway_id", "bucket", "attempts", "success_pct", "avg_latency_ms"])
+        df["bucket"] = pd.to_datetime(df["bucket"])
+        return df, None
+    events, redis_err = load_events()
+    if redis_err:
+        return bucket_series(events), f"API: {err}; Redis: {redis_err}"
+    return bucket_series(events, window_min=window_min, bucket_s=bucket_s), None
 
 
 DECISIONS_SQL = """
@@ -61,7 +74,34 @@ LIMIT %s
 """
 
 
+DECISION_COLUMNS = ["decision_id", "txn_id", "decided_at", "policy", "model_version", "chosen_gateway",
+                    "scores", "explanation", "amount_inr", "method", "bank"]
+
+
+def decisions_from_api(events: list) -> pd.DataFrame:
+    """Shape the API's /decisions response like the PostgreSQL query result."""
+    df = pd.DataFrame([{
+        "decision_id": i, "txn_id": e["txn_id"], "decided_at": pd.Timestamp(e["decided_at"]),
+        "policy": "xgboost" + ("" if e.get("mode", "normal") == "normal" else f"-{e['mode']}"),
+        "model_version": e.get("model_version"), "chosen_gateway": e["chosen_gateway"],
+        "scores": e["scores"], "explanation": e["explanation"], "amount_inr": float(e["amount_inr"]),
+        "method": e["method"], "bank": e["bank"]} for i, e in enumerate(events)], columns=DECISION_COLUMNS)
+    return df
+
+
 def load_decisions(limit: int = 500):
+    """Latest routing decisions: PostgreSQL when it has them, else the API's in-memory list.
+    Returns (DataFrame, error or None)."""
+    df, pg_err = load_decisions_pg(limit)
+    if not df.empty:
+        return df, None
+    events, api_err = api_get(f"/decisions?limit={min(limit, 300)}")
+    if api_err is None and events:
+        return decisions_from_api(events), None
+    return df, pg_err or api_err
+
+
+def load_decisions_pg(limit: int = 500):
     """Latest live routing decisions from PostgreSQL. Returns (DataFrame, error or None)."""
     try:
         from ml.db import _connect
@@ -78,9 +118,7 @@ def load_decisions(limit: int = 500):
         df["decided_at"] = pd.to_datetime(df["decided_at"])
         return df, None
     except Exception as exc:
-        return pd.DataFrame(columns=["decision_id", "txn_id", "decided_at", "policy", "model_version",
-                                     "chosen_gateway", "scores", "explanation", "amount_inr", "method",
-                                     "bank"]), f"{type(exc).__name__}: {exc}"
+        return pd.DataFrame(columns=DECISION_COLUMNS), f"{type(exc).__name__}: {exc}"
 
 
 def load_results(path: str = "reports/results.json"):

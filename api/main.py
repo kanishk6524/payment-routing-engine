@@ -12,7 +12,9 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from collections import deque
+
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from pipeline.bus import ConsumerThread, make_bus
@@ -20,6 +22,7 @@ from pipeline.bus import ConsumerThread, make_bus
 from .events import (
     DECISIONS_TOPIC, OUTCOMES_TOPIC, apply_outcome_event, decision_event, outcome_event,
 )
+from .demo import DemoFeed
 from .health import utc_now
 from .service import NoGatewayAvailable, Router
 
@@ -45,6 +48,20 @@ class OutcomeRequest(BaseModel):
 log = logging.getLogger("router.api")
 
 
+def require_admin(x_admin_token: Optional[str] = Header(default=None)):
+    """Writes that change shared state need ADMIN_TOKEN when it is set (public deployments)."""
+    token = os.getenv("ADMIN_TOKEN")
+    if token and x_admin_token != token:
+        raise HTTPException(401, "missing or wrong X-Admin-Token")
+
+
+def remember(decision: dict, txn: dict, exclude=()) -> None:
+    """Keep the decision for /decisions and publish it for the sink."""
+    ev = decision_event(decision, txn, exclude)
+    app.state.recent.append(ev)
+    app.state.bus.publish(DECISIONS_TOPIC, decision["txn_id"], ev)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.router = Router.from_artifacts(
@@ -54,6 +71,13 @@ async def lifespan(app: FastAPI):
     app.state.instance = uuid.uuid4().hex[:8]
     app.state.bus = make_bus()
     app.state.consumer = None
+    app.state.recent = deque(maxlen=500)
+    app.state.demo = None
+    if os.getenv("DEMO_MODE") == "1":
+        app.state.demo = DemoFeed(app.state.router, remember, rate=float(os.getenv("DEMO_RATE", "8")),
+                                  incident=os.getenv("DEMO_INCIDENT", "gw_d"),
+                                  data_dir=os.getenv("ROUTER_DATA", "data"))
+        app.state.demo.start()
     if app.state.bus.name == "kafka":  # outcomes reported by other services arrive here
         app.state.consumer = ConsumerThread(
             OUTCOMES_TOPIC, f"router-api-{app.state.instance}",
@@ -61,6 +85,8 @@ async def lifespan(app: FastAPI):
         app.state.consumer.start()
     log.info("health store: %s, event bus: %s", app.state.router.health_backend, app.state.bus.name)
     yield
+    if app.state.demo:
+        app.state.demo.stop()
     if app.state.consumer:
         app.state.consumer.stop()
     app.state.bus.flush(3)
@@ -80,7 +106,8 @@ def health():
             "gateways": r.gateway_ids, "disabled": sorted(r.tracker.disabled),
             "uptime_s": round(time.time() - app.state.started),
             "breaker_cooldown_s": r.breakers.cfg.cooldown_s,
-            "health_store": r.health_backend, "event_bus": app.state.bus.name}
+            "health_store": r.health_backend, "event_bus": app.state.bus.name,
+            "demo": app.state.demo is not None}
 
 
 @app.get("/gateways")
@@ -102,11 +129,11 @@ def route(req: RouteRequest):
         decision = _router().route(txn, exclude=req.exclude)
     except NoGatewayAvailable as exc:
         raise HTTPException(503, str(exc))
-    app.state.bus.publish(DECISIONS_TOPIC, decision["txn_id"], decision_event(decision, txn, req.exclude))
+    remember(decision, txn, req.exclude)
     return decision
 
 
-@app.post("/outcome", status_code=202)
+@app.post("/outcome", status_code=202, dependencies=[Depends(require_admin)])
 def outcome(req: OutcomeRequest):
     try:
         change = _router().record_outcome(req.gateway_id, req.success, req.latency_ms, req.failure_code)
@@ -117,7 +144,7 @@ def outcome(req: OutcomeRequest):
     return {"recorded": True, "breaker_change": change}
 
 
-@app.post("/gateways/{gateway_id}/disable")
+@app.post("/gateways/{gateway_id}/disable", dependencies=[Depends(require_admin)])
 def disable(gateway_id: str):
     r = _router()
     if gateway_id not in r.gateway_ids:
@@ -126,8 +153,25 @@ def disable(gateway_id: str):
     return {"gateway_id": gateway_id, "enabled": False}
 
 
-@app.post("/gateways/{gateway_id}/enable")
+@app.post("/gateways/{gateway_id}/enable", dependencies=[Depends(require_admin)])
 def enable(gateway_id: str):
     r = _router()
     r.tracker.disabled.discard(gateway_id)
     return {"gateway_id": gateway_id, "enabled": True}
+
+
+@app.get("/series")
+def series(minutes: int = 60, bucket_s: int = 60):
+    """Per gateway and time bucket: attempts, success rate and latency (for the dashboard charts)."""
+    from dashboards.data import bucket_series
+
+    out = bucket_series(_router().tracker.snapshot(), now=utc_now(), window_min=min(max(minutes, 1), 75),
+                        bucket_s=min(max(bucket_s, 10), 600))
+    out["bucket"] = out["bucket"].astype(str)
+    return out.to_dict(orient="records")
+
+
+@app.get("/decisions")
+def decisions(limit: int = 300):
+    """The most recent routing decisions held in memory, newest first."""
+    return list(app.state.recent)[::-1][: min(max(limit, 1), 500)]
