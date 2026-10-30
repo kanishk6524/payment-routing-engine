@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: payment-routing-engine
+    runtime: python
+    plan: free
+    buildCommand: bash scripts/build_render.sh
+    startCommand: python -m uvicorn api.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: ROUTER_SOURCE
+        value: csv
+      - key: ROUTER_HEALTH
+        value: memory
+      - key: EVENT_BUS
+        value: none
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"

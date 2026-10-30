@@ -22,6 +22,13 @@ flowchart LR
 
 Full design, scoring definition, event contracts and decisions: [docs/architecture.md](docs/architecture.md).
 
+## Host the demo online
+
+Deploy the FastAPI service on Render's free plan using the included
+`render.yaml`. See [deployment instructions](docs/deployment.md) for the GitHub
+setup, build settings, and live API checks. The build generates the sample data
+and trains the model automatically; neither artifact needs to be in Git.
+
 ## Repository layout
 
 ```
