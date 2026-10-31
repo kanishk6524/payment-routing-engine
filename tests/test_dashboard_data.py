@@ -96,3 +96,25 @@ def test_sources_fail_soft_when_services_are_down(monkeypatch):
     monkeypatch.setattr(data, "API_URL", "http://127.0.0.1:1")
     out, err = data.api_get("/health")
     assert out is None and err
+
+
+def test_is_waking_distinguishes_cold_start_from_refused():
+    assert data.is_waking("ReadTimeout: x")
+    assert data.is_waking("HTTPStatusError: Server error '503'")
+    assert not data.is_waking("ConnectError: [Errno 111] Connection refused")
+    assert not data.is_waking(None)
+
+
+def test_wait_for_api_polls_until_up():
+    calls = iter([(None, "ReadTimeout: x"), (None, "HTTPStatusError: 503"), ({"ok": 1}, None)])
+    out = data.wait_for_api(sleep=lambda s: None, get=lambda path, timeout=0: next(calls))
+    assert out == ({"ok": 1}, None)
+
+
+def test_wait_for_api_does_not_wait_on_refused():
+    n = []
+    def get(path, timeout=0):
+        n.append(1)
+        return None, "ConnectError: refused"
+    data.wait_for_api(sleep=lambda s: None, get=get)
+    assert len(n) == 1

@@ -51,7 +51,10 @@ with st.sidebar:
 
 st.title("Intelligent payment routing")
 
-health, health_err = data.api_get("/health")
+health, health_err = data.api_get("/health", timeout=3)
+if health_err and data.is_waking(health_err):
+    with st.spinner("Waking the routing API (free hosting sleeps when idle). This takes up to a minute..."):
+        health, health_err = data.wait_for_api()
 if health_err:
     notice("The routing API is not reachable. Start it with `uvicorn api.main:app`.", health_err)
 

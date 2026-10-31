@@ -1,0 +1,22 @@
+name: keep-alive
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # API ping (Render sleeps after ~15 min idle)
+    - cron: "17 */6 * * *"   # dashboard visit (Streamlit sleeps after ~12 h without a visitor)
+  workflow_dispatch:
+
+jobs:
+  ping-api:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --retry 5 --retry-delay 20 --max-time 120 https://payment-routing-engine.onrender.com/health
+
+  visit-dashboard:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 */6 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install playwright && playwright install --with-deps chromium
+      - run: python scripts/keepalive_streamlit.py

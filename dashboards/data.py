@@ -16,16 +16,39 @@ HEALTHY_MIN_SUCCESS = 0.80
 
 
 # ------------------------------------------------------------------ sources
-def api_get(path: str):
+def api_get(path: str, timeout: float = 8):
     """GET from the routing API. Returns (json, None) or (None, error message)."""
     import httpx
 
     try:
-        r = httpx.get(f"{API_URL}{path}", timeout=4)
+        r = httpx.get(f"{API_URL}{path}", timeout=timeout)
         r.raise_for_status()
         return r.json(), None
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
+
+
+WAKING_MARKERS = ("Timeout", "502", "503", "504", "RemoteProtocolError", "ReadError")
+
+
+def is_waking(err) -> bool:
+    """True when an error looks like a free-tier host cold start (not 'connection refused')."""
+    return bool(err) and any(m in err for m in WAKING_MARKERS)
+
+
+def wait_for_api(max_s: float = 90, every: float = 3, sleep=None, get=None):
+    """Poll /health while the API wakes up. Returns (json, err); err is None once it answers."""
+    import time
+
+    sleep = sleep or time.sleep
+    get = get or api_get
+    waited = 0.0
+    health, err = get("/health", timeout=10)
+    while err and is_waking(err) and waited < max_s:
+        sleep(every)
+        waited += every + 10 if "Timeout" in err else every
+        health, err = get("/health", timeout=10)
+    return health, err
 
 
 def api_post(path: str, body: dict = None):
